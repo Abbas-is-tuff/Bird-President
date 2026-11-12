@@ -1,5 +1,5 @@
 // Bird President offline cache. Bump V on every release so players get the update.
-const V='bird-president-v1.0.0';
+const V='bird-president-v1.1.0';
 const CORE=['./','manifest.webmanifest','icons/icon-192.png','icons/icon-512.png','icons/maskable-512.png','icons/apple-touch-icon.png','icons/favicon.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(V).then(async c=>{
  await c.add(new Request('index.html',{cache:'reload'}));

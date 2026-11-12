@@ -4,7 +4,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 async def main():
     async with async_playwright() as p:
         b = await p.chromium.launch(args=['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist'])
-        w, h = (390, 844) if 'mobile' in sys.argv else (1400, 860)
+        w, h = (390, 844) if 'mobile' in sys.argv else (1180, 820) if 'ipad' in sys.argv else (820, 1180) if 'ipadp' in sys.argv else (1400, 860)
         pg = await b.new_page(viewport={'width': w, 'height': h})
         logs = []
         pg.on('console', lambda m: logs.append(f'{m.type}: {m.text}'))

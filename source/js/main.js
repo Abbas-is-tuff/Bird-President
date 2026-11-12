@@ -16,6 +16,8 @@ import * as save from './sim/save.js';
 import { $, esc, ICONS, SEAL_SVG, modal, closeModal, modalOpen, toast, confirmBox } from './ui/dom.js';
 import { PANELS, ACTIONS, afterRender, onBind, ui, resultSummary } from './ui/panels.js';
 import { music } from './audio/music.js';
+import { Tutorial } from './ui/tutorial.js';
+import * as pol from './sim/politics.js';
 
 // ---------- Settings ----------
 const isMobile = matchMedia('(max-width: 760px)').matches || /Mobi|Android/i.test(navigator.userAgent);
@@ -27,7 +29,7 @@ const saveSettings = () => { try { localStorage.setItem('birdpresident.settings'
 // ---------- App state ----------
 let S = null, S0 = null, engine, office, city, worldView, world;
 let speed = 0, acc = 0, lastDay = -1, panelName = null, panelDirty = true, lastInteract = 0, lastPanelRefresh = 0, viewName = 'city';
-let menuOpen = true, lastMoodCheck = 0, lastWarCount = 0;
+let menuOpen = true, lastMoodCheck = 0, lastWarCount = 0, tutorial = null;
 
 function updateMusic() {
   if (!S || menuOpen) return music.setMood('menu');
@@ -58,6 +60,11 @@ async function init() {
   const unlock = () => music.unlock();
   window.addEventListener('pointerdown', unlock, true); window.addEventListener('keydown', unlock, true);
   buildChrome();
+  tutorial = new Tutorial({
+    get S() { return S; }, get panel() { return panelName; }, get speed() { return speed; },
+    openPanel: (n) => openPanel(n), closePanel: () => closePanel(), setView: (v) => setView(v), setSpeed: (v) => setSpeed(v), toast: (t) => toast(t),
+    campaignRally: () => { const r = pol.campaignAction(S, 'rally', ctx.val('rallyCity') || S.countries[0].capital); if (r.msg) toast(r.msg, '', r.ok ? 1 : -1); updateHUD(); renderPanel(true); },
+  });
   showMainMenu();
   $('#loading').remove();
   requestAnimationFrame(loop);
@@ -80,6 +87,7 @@ function loop(now) {
   if (S) drainToasts();
   if (now - lastMoodCheck > 1000) { lastMoodCheck = now; updateMusic(); }
   try { engine.frame(S || S0); } catch (err) { console.error(err); }
+  if (tutorial && !menuOpen) tutorial.update(modalOpen());
   if (S && S.day !== lastDay) { lastDay = S.day; updateHUD(); panelDirty = true; }
   if (panelName && panelDirty && now - lastInteract > 2500 && now - lastPanelRefresh > 1200) renderPanel();
   requestAnimationFrame(loop);
@@ -237,6 +245,7 @@ async function electionModal() {
   await modal({ kicker: r.kind === 'presidential' ? 'Presidential election' : 'Parliamentary election', title: r.kind === 'presidential' ? (won ? `${gov.president(S).name} wins the presidency` : 'Defeat at the polls') : 'Parliament elected', html, dismiss: false, options: [{ id: 'ok', label: first ? 'Take the oath of office' : 'Continue' }] });
   if (first) {
     setView('office'); office.setPresident(gov.president(S));
+    if (S.tutorial && S.tutorial.chapter !== 'done') { tutorial.start('govern'); return; }
     const r2 = await modal({ kicker: 'Inauguration', title: `President ${gov.president(S).name}`, html: `<p>You have been sworn in as President of ${esc(S.countries[0].name)}. Your party leadership has proposed a cabinet; review it, and choose your Vice President.</p><p class="note">Your coalition holds ${S.pol.coalition.reduce((s, id) => s + S.parties[id].seats, 0)} of 200 seats. Below 101 you will need partners to pass laws — invite parties in Politics.</p>`, dismiss: false, options: [{ id: 'vp', label: 'Choose a Vice President', hint: `Currently: ${gov.charName(S, S.pol.cabinet.vp)}` }, { id: 'cab', label: 'Review the cabinet' }, { id: 'go', label: 'Get to work' }] });
     if (r2 === 'vp') { const res = await ACTIONS.appointPick(S, 'vp'); if (res?.msg) toast(res.msg, '', res.ok ? 1 : -1); openPanel('government'); }
     if (r2 === 'cab') openPanel('government');
@@ -292,6 +301,7 @@ function showMenuHtml(html) { menuOpen = true; hideChrome(true); const m = $('#m
 function hideMenu() { menuOpen = false; $('#menu').classList.add('hidden'); hideChrome(false); setView(viewName); updateHUD(); }
 
 function showMainMenu() {
+  tutorial?.stop();
   S = null; speed = 0; setView('city'); city.controls.autoRotate = true;
   const meta = save.slotMeta('auto');
   const m = showMenuHtml(`<div class="seal">${SEAL_SVG}</div><h1 class="title">Bird<br>President</h1><div class="subtitle">A political and geopolitical simulator. Win the election, govern a nation of birds, manage its economy, and steer it through a world of rival powers.</div>
@@ -307,7 +317,7 @@ function showMainMenu() {
 }
 
 function showNewGame() {
-  const choice = { birdId: 'abbas', partyId: 'unity', countryName: 'Republic of Aviania', difficulty: 'normal' };
+  const choice = { birdId: 'abbas', partyId: 'unity', countryName: 'Republic of Aviania', difficulty: 'normal', tutorial: true };
   const render = () => {
     const m = showMenuHtml(`<button class="btn sm" data-m="back">← Back</button><h1 class="title" style="font-size:40px">New campaign</h1>
       <h3>Your candidate</h3><div class="pick-grid">${CORE_CHARS.map((c) => `<button class="pick ${choice.birdId === c.id ? 'on' : ''}" data-bird="${c.id}"><img src="${portrait(S0.chars[c.id])}" alt=""><div class="name">${esc(c.name)}</div><div class="tiny muted">${esc(c.species)} · ${esc(c.trait)}</div><div class="tiny muted">Charisma ${c.charisma} · Competence ${c.competence}</div></button>`).join('')}</div>
@@ -315,14 +325,16 @@ function showNewGame() {
       <h3>Your party</h3><div class="pick-grid">${PARTIES.map((p) => `<button class="pick ${choice.partyId === p.id ? 'on' : ''}" data-party="${p.id}"><div class="row"><span style="width:12px;height:12px;border-radius:3px;background:${p.color}"></span><div class="name">${esc(p.name)}</div></div><div class="tiny muted">${esc(p.desc)}</div></button>`).join('')}</div>
       <h3>Nation</h3><input type="text" id="ng-name" value="${esc(choice.countryName)}" maxlength="34" style="width:100%">
       <h3>Difficulty</h3><div class="chip-row">${['easy', 'normal', 'hard'].map((d) => `<button class="chip ${choice.difficulty === d ? 'on' : ''}" data-diff="${d}">${d[0].toUpperCase() + d.slice(1)}</button>`).join('')}</div>
+      <h3>Tutorial</h3><div class="chip-row"><button class="chip ${choice.tutorial ? 'on' : ''}" data-tut="1">Show me how to play</button><button class="chip ${choice.tutorial ? '' : 'on'}" data-tut="0">I know what I'm doing</button></div>
       <p class="note">${choice.birdId === 'silver' ? 'Silver usually leads the opposition; choosing Silver puts Abbas at the head of your main rival party.' : 'Silver leads the main rival party and will be your opponent.'} The first election is in 45 days. Campaign hard: rallies, ads, pledges and a televised debate.</p>
       <button class="menu-btn primary" data-m="start" style="margin-top:16px">Launch campaign</button>`);
     m.onclick = (e) => {
-      const t = e.target.closest('[data-bird],[data-party],[data-diff],[data-m]'); if (!t) return;
+      const t = e.target.closest('[data-bird],[data-party],[data-diff],[data-tut],[data-m]'); if (!t) return;
+      if (t.dataset.tut) choice.tutorial = t.dataset.tut === '1';
       choice.countryName = $('#ng-name').value.trim() || 'Republic of Aviania';
       if (t.dataset.bird) choice.birdId = t.dataset.bird; if (t.dataset.party) choice.partyId = t.dataset.party; if (t.dataset.diff) choice.difficulty = t.dataset.diff;
       if (t.dataset.m === 'back') return showMainMenu();
-      if (t.dataset.m === 'start') { const s = newGame(choice); primeState(s); startWith(s, true); return; }
+      if (t.dataset.m === 'start') { const s = newGame(choice); primeState(s); s.tutorial = { chapter: choice.tutorial ? 'campaign' : 'done', step: 0 }; startWith(s, true); return; }
       render();
     };
   };
@@ -337,7 +349,10 @@ function startWith(state, fresh = false) {
   renderPortraits(Object.values(S.chars));
   hideMenu(); setView(fresh ? 'city' : 'office'); city.controls.autoRotate = false;
   setSpeed(0); updateHUD();
-  if (fresh) {
+  tutorial.stop();
+  if (fresh && S.tutorial?.chapter === 'campaign') { tutorial.start('campaign'); }
+  else if (!fresh) tutorial.resume();
+  else if (fresh) {
     modal({ kicker: `${fmtDate(S.day, true)} · ${S.countries[0].name}`, title: `${gov.president(S).name} for President`, html: `<p>The presidential election is in <b>${S.pol.nextPresElection} days</b>. You lead the ${esc(partyName(S.player.partyId))}; your main rival is ${esc(S.chars[Object.values(S.parties).find((p) => p.leader && p.id !== S.player.partyId && (p.leader === 'silver' || p.leader === 'abbas'))?.leader]?.name || 'Silver')}.</p><p class="note">Open <b>Politics</b> to campaign (one action per day), then press play. Once elected, you'll govern from the Oval Nest: tap the computer, documents, phone, TV, door and lectern in the office.</p>`, dismiss: false, options: [{ id: 'go', label: 'Open the campaign hub' }] }).then(() => { openPanel('politics'); setSpeed(1); });
   }
   save.saveSlot(S, 'auto');
@@ -345,7 +360,8 @@ function startWith(state, fresh = false) {
 
 function showSystemMenu() {
   setSpeed(0);
-  modal({ kicker: 'Menu', title: 'Bird President', options: [{ id: 'resume', label: 'Resume' }, { id: 'save', label: 'Save / load game' }, { id: 'settings', label: 'Settings' }, { id: 'help', label: 'How to play' }, { id: 'main', label: 'Quit to main menu', hint: 'Unsaved progress since the last autosave is lost' }] }).then(async (r) => {
+  modal({ kicker: 'Menu', title: 'Bird President', options: [{ id: 'resume', label: 'Resume' }, { id: 'save', label: 'Save / load game' }, { id: 'settings', label: 'Settings' }, { id: 'tutorial', label: 'Tutorial', hint: 'Cookie walks you through the game step by step' }, { id: 'help', label: 'How to play' }, { id: 'main', label: 'Quit to main menu', hint: 'Unsaved progress since the last autosave is lost' }] }).then(async (r) => {
+    if (r === 'tutorial') tutorial.start(gov.isGoverning(S) ? 'govern' : 'campaign');
     if (r === 'save') showSaveLoad(false); if (r === 'settings') showSettings(false); if (r === 'help') showHelp(false);
     if (r === 'main' && (await confirmBox('Quit to main menu?', 'Your game was autosaved at the start of this month.', 'Quit'))) { save.saveSlot(S, 'auto'); showMainMenu(); }
   });
@@ -397,4 +413,4 @@ function showHelp() {
 
 init().catch((e) => { console.error(e); const l = $('#loading'); if (l) l.textContent = 'Failed to start: ' + e.message; });
 // Debug handle for automated tests / power users (window.__bp.S is the live state).
-window.__bp = { music, get S() { return S; }, setSpeed: (v) => setSpeed(v), openPanel: (n) => openPanel(n), setView: (v) => setView(v) };
+window.__bp = { music, get tutorial() { return tutorial; }, get S() { return S; }, setSpeed: (v) => setSpeed(v), openPanel: (n) => openPanel(n), setView: (v) => setView(v) };

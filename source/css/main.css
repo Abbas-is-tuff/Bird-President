@@ -184,3 +184,16 @@ td.n, th.n { text-align: right; font-family: var(--mono); }
   #menu { padding: 24px 18px; align-items: flex-start; background: linear-gradient(180deg, rgba(4, 8, 15, 0.9), rgba(4, 8, 15, 0.7)); }
   .menu-btn { max-width: none; }
 }
+
+/* ---------- Tutorial ---------- */
+#tut { position: fixed; inset: 0; z-index: 35; pointer-events: none; }
+.tut-spot { position: fixed; border: 2px solid var(--gold); border-radius: 12px; box-shadow: 0 0 0 9999px rgba(3, 6, 12, 0.5), 0 0 24px rgba(217, 180, 90, 0.6); transition: all 0.25s ease; pointer-events: none; animation: tutpulse 1.6s ease-in-out infinite; }
+@keyframes tutpulse { 50% { box-shadow: 0 0 0 9999px rgba(3, 6, 12, 0.5), 0 0 34px rgba(217, 180, 90, 0.95); } }
+.tut-bubble { position: fixed; pointer-events: auto; background: #0e1829; border: 1px solid rgba(217, 180, 90, 0.55); border-radius: 14px; padding: 14px; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6); transition: left 0.25s ease, top 0.25s ease; }
+.tut-bubble.pop { animation: pop 0.2s ease-out; }
+.tut-kicker { font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); }
+.tut-title { font-family: var(--serif); font-size: 19px; font-weight: 700; margin-top: 2px; }
+.tut-text { font-size: 13.5px; line-height: 1.55; color: #cdd5e1; margin: 10px 0 12px; }
+.tut-text b { color: var(--gold2); font-weight: 600; }
+.tut-foot { display: flex; align-items: center; gap: 6px; }
+.tut-skip { border-color: transparent; color: var(--muted); padding-left: 0; background: none; }
